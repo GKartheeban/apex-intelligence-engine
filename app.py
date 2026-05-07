@@ -79,8 +79,6 @@ def execute_sql_for_web(sql_query, db_name):
 # --- MULTI-AGENT SWARM COORDINATOR ---
 # ==========================================
 # ==========================================
-# --- MULTI-AGENT SWARM COORDINATOR ---
-# ==========================================
 def run_data_swarm(user_question, api_key, current_schema, db_name):
     # 1. AGENT 1: Write the Initial SQL
     sql_data = agent_sql_engineer(user_question, current_schema, api_key)
@@ -257,16 +255,23 @@ if question:
                     st.code(swarm_result["sql"], language="sql")
                 
                 # Render the correct visual
+                # Render the correct visual
                 if isinstance(df, str) and df == "SUCCESS_ACTION":
                     st.success("✅ Database action executed successfully!")
                 elif isinstance(df, pd.DataFrame) and not df.empty:
-                    if chart_type == "bar" and x_col and y_col:
+                    
+                    # --- THE FIX: Verify column names exist before drawing charts! ---
+                    valid_x = x_col in df.columns if x_col else False
+                    valid_y = y_col in df.columns if y_col else False
+
+                    if chart_type == "bar" and valid_x and valid_y:
                         st.plotly_chart(px.bar(df, x=x_col, y=y_col), use_container_width=True)
-                    elif chart_type == "line" and x_col and y_col:
+                    elif chart_type == "line" and valid_x and valid_y:
                         st.plotly_chart(px.line(df, x=x_col, y=y_col), use_container_width=True)
-                    elif chart_type == "pie" and x_col and y_col:
+                    elif chart_type == "pie" and valid_x and valid_y:
                         st.plotly_chart(px.pie(df, names=x_col, values=y_col), use_container_width=True)
                     else:
+                        # Fallback: If AI messed up the chart logic, just show the table!
                         st.dataframe(df, use_container_width=True)
                 else:
                     st.warning("Query executed successfully, but no data was returned.")

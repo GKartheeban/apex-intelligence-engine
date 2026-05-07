@@ -32,6 +32,7 @@ def agent_sql_engineer(user_question, schema, api_key):
         "2. Use SINGLE QUOTES (') for strings/dates. Never double quotes.\n"
         "3. Pay attention to negative logic (not, exclude).\n"
         "4. Output JSON ONLY.\n"
+        "5. ALWAYS use 'AS' aliases for aggregate functions (e.g., SUM(amount) AS total_spent).\n"
         "JSON FORMAT:\n"
         "{\n"
         '  "sql": "SELECT ..."\n'
