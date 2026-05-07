@@ -5,6 +5,7 @@ from groq import Groq
 import time
 import json
 import plotly.express as px
+from swarm import agent_sql_engineer, agent_data_analyst
 
 
 # ==========================================
@@ -75,64 +76,46 @@ def execute_sql_for_web(sql_query, db_name):
             connection.close()
 
 # ==========================================
-# --- THE BRAIN (Now with JSON & Memory!) ---
+# --- MULTI-AGENT SWARM COORDINATOR ---
 # ==========================================
-def get_ai_response(user_question, api_key, current_schema, chat_history):
-    client = Groq(api_key=api_key)
-    
-    # 1. Build the system rules to force JSON output
-    # 1. Build the system rules to force JSON output
-    # 1. Build the system rules to force JSON output AND advanced logic
-    # 1. Build the system rules to force JSON output AND advanced logic
-    messages = [
-        {
-            "role":"system",
-            "content": (
-                "You are an elite SQL and Data Visualization AI. "
-                "You must respond ONLY with a raw JSON object. Do not use markdown ```json blocks. "
-                "CRITICAL RULES:\n"
-                "1. ONLY use columns explicitly listed in the dynamic schema provided.\n"
-                "2. DO NOT output 'USE database;' commands.\n"
-                "3. If asked to list databases, the sql MUST BE: SELECT schema_name AS 'Available Databases' FROM information_schema.schemata;\n"
-                "4. If asked to list tables, the sql MUST BE: SELECT table_name AS 'Available Tables' FROM information_schema.tables WHERE table_schema = DATABASE();\n"
-                "5. Analyze the user's request: if they ask for a chart, set chart_type to 'bar', 'line', 'pie', or 'scatter'. Otherwise, use 'table'.\n"
-                "6. If chart_type is not 'table', provide the exact column names for x_col and y_col based on your SQL query.\n"
-                "7. NEGATIVE LOGIC: Pay strict attention to negative constraints (like 'not', 'exclude', 'except'). Translate these into explicit SQL exclusion operators (!=, <>, NOT IN).\n"
-                "8. SQL SYNTAX: You MUST use Single Quotes (') for all string and date literals. NEVER use Double Quotes (\") for values, or the query will crash.\n"
-                "JSON FORMAT MUST BE EXACTLY:\n"
-                "{\n"
-                '  "sql": "SELECT...",\n'
-                '  "chart_type": "table",\n'
-                '  "x_col": "column_name_or_null",\n'
-                '  "y_col": "column_name_or_null",\n'
-                '  "explanation": "A short, conversational sentence explaining what you found."\n'
-                "}"
-            )
-        }
-    ]
-    
-    # 2. Add the Chat Memory (so it remembers follow-up questions!)
-    for msg in chat_history[-4:]: # We keep the last 4 messages to save tokens
-        messages.append({"role": msg["role"], "content": msg["content"]})
-        
-    # 3. Add the current question and schema
-    messages.append({
-        "role": "user",
-        "content": f"Schema:\n{current_schema}\n\nQuestion: {user_question}"
-    })
+def run_data_swarm(user_question, api_key, current_schema, db_name):
+    # 1. AGENT 1: Write the SQL
+    sql_data = agent_sql_engineer(user_question, current_schema, api_key)
+    sql_query = sql_data.get("sql", "")
 
-    # 4. Make the call
-    response = client.chat.completions.create(
-        messages=messages,
-        model="llama-3.1-8b-instant",
-        response_format={"type": "json_object"} # Forces Llama to output JSON!
-    )
-    
-    # Safely parse the JSON
-    try:
-        return json.loads(response.choices[0].message.content.strip())
-    except Exception:
-        return {"sql": "", "explanation": "Error formatting JSON response.", "chart_type": "table"}
+    if not sql_query:
+        return {"error": "The SQL Engineer failed to write a query.", "sql": ""}
+
+    # 2. THE SYSTEM: Execute the Query safely against Aiven
+    df, db_error = execute_sql_for_web(sql_query, db_name)
+
+    if db_error:
+        return {"error": f"Database Error: {db_error}", "sql": sql_query}
+
+    # 3. PREPARE THE DATA SAMPLE
+    # We only send the first 3 rows to the Analyst so we don't overwhelm its memory!
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        data_sample = str(df.head(3).to_dict(orient="records"))
+    elif isinstance(df, str) and df == "SUCCESS_ACTION":
+        data_sample = "Database action executed successfully. (No table returned)"
+    else:
+        data_sample = "The query ran successfully, but returned 0 rows of data."
+
+    # 4. AGENT 2: Read the actual data and write the Explanation & Pick the Chart
+    analyst_data = agent_data_analyst(user_question, data_sample, api_key)
+
+    # 5. Package it all up for the UI
+    return {
+        "sql": sql_query,
+        "df": df,
+        "explanation": analyst_data.get("explanation", "Here is the data you requested."),
+        "chart_type": analyst_data.get("chart_type", "table"),
+        "x_col": analyst_data.get("x_col"),
+        "y_col": analyst_data.get("y_col")
+    }
+
+
+
 
 # ==========================================
 # --- THE UI: MAIN APPLICATION ---
@@ -233,37 +216,34 @@ if question:
         st.write(question)
         
     with st.chat_message("assistant"):
-        with st.spinner("Analyzing data and generating visuals..."):
+        with st.spinner("The Agent Swarm is analyzing your request..."):
             
-            # The AI reads the memory, the schema, and writes the JSON blueprint
-            ai_data = get_ai_response(question, st.session_state.groq_key, current_schema, st.session_state.db_chat_histories[selected_db])
+            # 1. WAKE UP THE SWARM
+            swarm_result = run_data_swarm(question, st.session_state.groq_key, current_schema, selected_db)
             
-            sql_query = ai_data.get("sql", "")
-            explanation = ai_data.get("explanation", "Here is what I found:")
-            chart_type = ai_data.get("chart_type", "table")
-            x_col = ai_data.get("x_col")
-            y_col = ai_data.get("y_col")
+            # 2. Check for Errors from Agent 1 or the Database
+            if "error" in swarm_result:
+                st.error(swarm_result["error"])
+                if swarm_result.get("sql"):
+                    with st.expander("🔍 View Failed SQL"):
+                        st.code(swarm_result["sql"], language="sql")
             
-            # Display the AI's conversational explanation
-            st.write(explanation)
-            with st.expander("🔍 View SQL Query"):
-                st.code(sql_query, language="sql")
-            
-            # Execute and Render
-            if sql_query:
-                df, error = execute_sql_for_web(sql_query, selected_db)
+            # 3. Render the Success from Agent 2!
+            else:
+                df = swarm_result["df"]
+                explanation = swarm_result["explanation"]
+                chart_type = swarm_result["chart_type"]
+                x_col = swarm_result["x_col"]
+                y_col = swarm_result["y_col"]
                 
-                if error:
-                    st.error(f"❌ Database Error: {error}")
+                st.write(explanation)
+                with st.expander("🔍 View SQL Query"):
+                    st.code(swarm_result["sql"], language="sql")
                 
-                # 1. Check if df is a string FIRST. 
-                # Python will short-circuit here if df is a DataFrame, avoiding the error!
-                elif isinstance(df, str) and df == "SUCCESS_ACTION":
+                # Render the correct visual
+                if isinstance(df, str) and df == "SUCCESS_ACTION":
                     st.success("✅ Database action executed successfully!")
-                
-                # 2. Now it is completely safe to check if we have a non-empty DataFrame
                 elif isinstance(df, pd.DataFrame) and not df.empty:
-                    # Render the correct visual based on AI's instructions
                     if chart_type == "bar" and x_col and y_col:
                         st.plotly_chart(px.bar(df, x=x_col, y=y_col), use_container_width=True)
                     elif chart_type == "line" and x_col and y_col:
@@ -272,12 +252,10 @@ if question:
                         st.plotly_chart(px.pie(df, names=x_col, values=y_col), use_container_width=True)
                     else:
                         st.dataframe(df, use_container_width=True)
-                
                 else:
                     st.warning("Query executed successfully, but no data was returned.")
                 
-                # Save the results to Memory so they stay on screen!
-                # Save the results to Memory so they stay on screen!
+                # Save the results to Memory
                 st.session_state.db_chat_histories[selected_db].append({
                     "role": "assistant", 
                     "content": explanation,
