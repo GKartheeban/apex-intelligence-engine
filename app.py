@@ -82,6 +82,7 @@ def get_ai_response(user_question, api_key, current_schema, chat_history):
     
     # 1. Build the system rules to force JSON output
     # 1. Build the system rules to force JSON output
+    # 1. Build the system rules to force JSON output AND advanced logic
     messages = [
         {
             "role":"system",
@@ -95,6 +96,7 @@ def get_ai_response(user_question, api_key, current_schema, chat_history):
                 "4. If asked to list tables, the sql MUST BE: SELECT table_name AS 'Available Tables' FROM information_schema.tables WHERE table_schema = DATABASE();\n"
                 "5. Analyze the user's request: if they ask for a chart, set chart_type to 'bar', 'line', 'pie', or 'scatter'. Otherwise, use 'table'.\n"
                 "6. If chart_type is not 'table', provide the exact column names for x_col and y_col based on your SQL query.\n"
+                "7. NEGATIVE LOGIC: Pay strict attention to negative constraints (like 'not', 'exclude', 'except', 'other than'). You MUST translate these into explicit SQL exclusion operators like !=, <>, or NOT IN.\n"
                 "JSON FORMAT MUST BE EXACTLY:\n"
                 "{\n"
                 '  "sql": "SELECT...",\n'
