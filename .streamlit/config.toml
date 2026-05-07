@@ -1,0 +1,14 @@
+[theme]
+# The classic OpenAI Teal/Green
+primaryColor="#10A37F"
+
+# Deep gray for the main chat background
+backgroundColor="#343541"
+
+# Slightly darker gray for the sidebar to create depth
+secondaryBackgroundColor="#202123"
+
+# Soft off-white for the text (easier on the eyes than pure white)
+textColor="#ECECF1"
+
+font="sans serif"
