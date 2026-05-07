@@ -5,7 +5,7 @@ from groq import Groq
 import time
 import json
 import plotly.express as px
-from swarm import agent_sql_engineer, agent_data_analyst
+from swarm import agent_sql_engineer, agent_data_analyst, agent_qa_debugger
 
 
 # ==========================================
@@ -78,22 +78,38 @@ def execute_sql_for_web(sql_query, db_name):
 # ==========================================
 # --- MULTI-AGENT SWARM COORDINATOR ---
 # ==========================================
+# ==========================================
+# --- MULTI-AGENT SWARM COORDINATOR ---
+# ==========================================
 def run_data_swarm(user_question, api_key, current_schema, db_name):
-    # 1. AGENT 1: Write the SQL
+    # 1. AGENT 1: Write the Initial SQL
     sql_data = agent_sql_engineer(user_question, current_schema, api_key)
     sql_query = sql_data.get("sql", "")
 
     if not sql_query:
         return {"error": "The SQL Engineer failed to write a query.", "sql": ""}
 
-    # 2. THE SYSTEM: Execute the Query safely against Aiven
+    # 2. Execute the Query
     df, db_error = execute_sql_for_web(sql_query, db_name)
 
+    # ==========================================
+    # --- THE SELF-HEALING LOOP (AGENT 3) ---
+    # ==========================================
     if db_error:
-        return {"error": f"Database Error: {db_error}", "sql": sql_query}
+        print(f"Swarm caught an error: {db_error}. Rerouting to QA...")
+        
+        # Send the bad code and the error to the QA Agent!
+        qa_data = agent_qa_debugger(sql_query, db_error, current_schema, api_key)
+        sql_query = qa_data.get("sql", "")
+        
+        # Try running the FIXED query!
+        df, db_error = execute_sql_for_web(sql_query, db_name)
+        
+        # If it fails a second time, we surrender and tell the user.
+        if db_error:
+            return {"error": f"The Swarm tried to fix it but failed. Error: {db_error}", "sql": sql_query}
 
     # 3. PREPARE THE DATA SAMPLE
-    # We only send the first 3 rows to the Analyst so we don't overwhelm its memory!
     if isinstance(df, pd.DataFrame) and not df.empty:
         data_sample = str(df.head(3).to_dict(orient="records"))
     elif isinstance(df, str) and df == "SUCCESS_ACTION":
@@ -101,7 +117,7 @@ def run_data_swarm(user_question, api_key, current_schema, db_name):
     else:
         data_sample = "The query ran successfully, but returned 0 rows of data."
 
-    # 4. AGENT 2: Read the actual data and write the Explanation & Pick the Chart
+    # 4. AGENT 2: The Analyst writes the explanation
     analyst_data = agent_data_analyst(user_question, data_sample, api_key)
 
     # 5. Package it all up for the UI

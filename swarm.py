@@ -61,3 +61,22 @@ def agent_data_analyst(user_question, data_sample, api_key):
     # We send the analyst the question AND a stringified version of the data headers/first row
     user_content = f"Question: {user_question}\n\nData Sample:\n{data_sample}"
     return call_agent(system_prompt, user_content, api_key)
+
+# ==========================================
+# --- AGENT 3: THE QA DEBUGGER ---
+# ==========================================
+def agent_qa_debugger(bad_sql, error_message, schema, api_key):
+    system_prompt = (
+        "You are a Senior SQL Database Administrator. A junior engineer wrote a bad query that crashed. "
+        "Your job is to read the bad SQL, read the error message, and write the FIXED SQL query. "
+        "CRITICAL RULES:\n"
+        "1. Only use columns listed in the schema.\n"
+        "2. Use single quotes for strings.\n"
+        "3. Output JSON ONLY.\n"
+        "JSON FORMAT:\n"
+        "{\n"
+        '  "sql": "SELECT ..."\n'
+        "}"
+    )
+    user_content = f"Schema:\n{schema}\n\nBad SQL:\n{bad_sql}\n\nError Message:\n{error_message}"
+    return call_agent(system_prompt, user_content, api_key)
