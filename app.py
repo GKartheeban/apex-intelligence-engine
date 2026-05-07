@@ -200,7 +200,7 @@ st.title("🏔️ Apex Digital | Intelligence Engine")
 st.markdown(f"**Enterprise Data Analysis.** Currently connected to: **`{selected_db}`**.")
 
 # 1. Render all previous chat messages and charts from Memory!
-for msg in st.session_state.db_chat_histories[selected_db]
+for msg in st.session_state.db_chat_histories[selected_db]:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         
