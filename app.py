@@ -159,9 +159,11 @@ if "authenticated" not in st.session_state:
     login_screen()
     st.stop()
 
-# --- INITIALIZE MEMORY ---
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# # --- INITIALIZE MEMORY ---
+# if "chat_history" not in st.session_state:
+#     st.session_state.chat_history = []
+if "db_chat_histories" not in st.session_state:
+    st.session_state.db_chat_histories = {} # This is now a Dictionary (Filing Cabinet)
 
 # --- SIDEBAR ---
 # --- SIDEBAR ---
@@ -170,19 +172,17 @@ with st.sidebar:
     st.success("🟢 AI Engine Online")
     
     # --- RESTORED SERVER DETAILS ---
-    st.markdown("#### 🖥️ Server Details")
-    st.code(f"Host: {DB_HOST}\nPort: {DB_PORT}\nUser: {DB_USER}", language="yaml")
-    st.markdown("*Password securely hidden in vault.*")
-    # -------------------------------
-    
-    st.divider()
-    
     st.markdown("#### 🗄️ Database Selection")
     available_dbs = get_available_databases()
     
     if available_dbs:
         selected_db = st.selectbox("Active Database:", available_dbs)
         current_schema = get_dynamic_schema(selected_db)
+        
+        # --- NEW: Open the specific folder for this database! ---
+        if selected_db not in st.session_state.db_chat_histories:
+            st.session_state.db_chat_histories[selected_db] = []
+            
         with st.expander("👀 View Dynamic Schema"):
             st.code(current_schema, language="text")
     else:
@@ -191,7 +191,8 @@ with st.sidebar:
         
     st.divider()
     if st.button("🗑️ Clear Chat History"):
-        st.session_state.chat_history = []
+        # Now this button ONLY clears the active database's history!
+        st.session_state.db_chat_histories[selected_db] = []
         st.rerun()
 
 # --- MAIN DASHBOARD ---
@@ -199,8 +200,7 @@ st.title("🏔️ Apex Digital | Intelligence Engine")
 st.markdown(f"**Enterprise Data Analysis.** Currently connected to: **`{selected_db}`**.")
 
 # 1. Render all previous chat messages and charts from Memory!
-# 1. Render all previous chat messages and charts from Memory!
-for msg in st.session_state.chat_history:
+for msg in st.session_state.db_chat_histories[selected_db]
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         
@@ -228,7 +228,7 @@ question = st.chat_input("👤 Ask a question (e.g., 'Show me a bar chart of sal
 
 if question:
     # Add user question to memory and display it
-    st.session_state.chat_history.append({"role": "user", "content": question})
+    st.session_state.db_chat_histories[selected_db].append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.write(question)
         
@@ -236,7 +236,7 @@ if question:
         with st.spinner("Analyzing data and generating visuals..."):
             
             # The AI reads the memory, the schema, and writes the JSON blueprint
-            ai_data = get_ai_response(question, st.session_state.groq_key, current_schema, st.session_state.chat_history)
+            ai_data = get_ai_response(question, st.session_state.groq_key, current_schema, st.session_state.db_chat_histories[selected_db])
             
             sql_query = ai_data.get("sql", "")
             explanation = ai_data.get("explanation", "Here is what I found:")
@@ -277,7 +277,8 @@ if question:
                     st.warning("Query executed successfully, but no data was returned.")
                 
                 # Save the results to Memory so they stay on screen!
-                st.session_state.chat_history.append({
+                # Save the results to Memory so they stay on screen!
+                st.session_state.db_chat_histories[selected_db].append({
                     "role": "assistant", 
                     "content": explanation,
                     "df": df,
