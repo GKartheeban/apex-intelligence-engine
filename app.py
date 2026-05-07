@@ -195,6 +195,7 @@ st.title("🏔️ Apex Digital | Intelligence Engine")
 st.markdown(f"**Enterprise Data Analysis.** Currently connected to: **`{selected_db}`**.")
 
 # 1. Render all previous chat messages and charts from Memory!
+# 1. Render all previous chat messages and charts from Memory!
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
@@ -204,15 +205,20 @@ for msg in st.session_state.chat_history:
             df = msg["df"]
             c_type = msg.get("chart_type", "table")
             
-            if c_type == "bar" and msg["x_col"] and msg["y_col"]:
-                st.plotly_chart(px.bar(df, x=msg["x_col"], y=msg["y_col"]), use_container_width=True)
-            elif c_type == "line" and msg["x_col"] and msg["y_col"]:
-                st.plotly_chart(px.line(df, x=msg["x_col"], y=msg["y_col"]), use_container_width=True)
-            elif c_type == "pie" and msg["x_col"] and msg["y_col"]:
-                st.plotly_chart(px.pie(df, names=msg["x_col"], values=msg["y_col"]), use_container_width=True)
-            else:
-                st.dataframe(df, use_container_width=True)
-
+            # --- THE FIX: Check if it is our Action Success string first! ---
+            if isinstance(df, str) and df == "SUCCESS_ACTION":
+                st.success("✅ Database action executed successfully!")
+            
+            # --- Otherwise, if it is a real DataFrame, draw the charts/tables ---
+            elif isinstance(df, pd.DataFrame) and not df.empty:
+                if c_type == "bar" and msg.get("x_col") and msg.get("y_col"):
+                    st.plotly_chart(px.bar(df, x=msg["x_col"], y=msg["y_col"]), use_container_width=True)
+                elif c_type == "line" and msg.get("x_col") and msg.get("y_col"):
+                    st.plotly_chart(px.line(df, x=msg["x_col"], y=msg["y_col"]), use_container_width=True)
+                elif c_type == "pie" and msg.get("x_col") and msg.get("y_col"):
+                    st.plotly_chart(px.pie(df, names=msg["x_col"], values=msg["y_col"]), use_container_width=True)
+                else:
+                    st.dataframe(df, use_container_width=True)
 # 2. Chat Input
 question = st.chat_input("👤 Ask a question (e.g., 'Show me a bar chart of salaries by department')")
 
